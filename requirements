@@ -1,0 +1,4 @@
+openai>=2.8.0
+PyYAML>=6.0.3
+python-dotenv>=0.9.9
+httpx>=0.24.0

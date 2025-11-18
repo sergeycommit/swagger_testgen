@@ -1,0 +1,10 @@
+.env
+.idea/
+__pycache__/
+*.pyc
+*.py~
+*.log
+result*
+*.csv
+*.json
+!.gitignore

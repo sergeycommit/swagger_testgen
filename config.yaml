@@ -1,0 +1,38 @@
+# Sample configuration file for the test case generator
+
+llm:
+  # LLM API URL (OpenRouter by default, can be local e.g. http://localhost:1234/v1)
+  base_url: "https://openrouter.ai/api/v1"
+  model: "openai/gpt-4o-mini"
+  temperature: 0.7
+  max_tokens: 4000
+  retry_attempts: 3
+  retry_delay: 2  # seconds
+  max_concurrent_requests: null  # parallel requests to the LLM (null or 0 = unlimited)
+
+generation:
+  # Remove duplicate test cases
+  enable_deduplication: true
+  
+  # Coverage validation (optional, only checks the final result)
+  # These parameters DO NOT limit generation, they only validate the outcome
+  validation:
+    # Minimum number of negative cases per parameter (validation only)
+    min_negative_cases_per_param: null  # null = skip validation
+    # Minimum total cases per operation (validation only)
+    min_total_cases_per_operation: null  # null = skip validation
+
+filters:
+  # Include only these paths (empty list = all paths)
+  include_paths: []
+  # Exclude paths matching any of these prefixes
+  exclude_paths: []
+  # Include only these HTTP methods (empty = all methods)
+  include_methods: []
+  # Include only operations with these tags (empty = all tags)
+  include_tags: []
+
+export:
+  format: "csv"  # csv or json
+  encoding: "utf-8"
+
