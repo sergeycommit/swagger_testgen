@@ -32,10 +32,11 @@ class Config:
                 "base_url": "https://openrouter.ai/api/v1",  # OpenRouter by default; can be set to a local endpoint
                 "model": "openai/gpt-4o-mini",
                 "temperature": 0.7,
-                "max_tokens": 4000,
+                "max_tokens": 16000,  # Increased for comprehensive test generation
                 "retry_attempts": 3,
                 "retry_delay": 2,
-                "max_concurrent_requests": None  # None or 0 means "no limit" for async fan-out
+                "max_concurrent_requests": None,  # None or 0 means "no limit" for async fan-out
+                "use_streaming": True  # Use streaming to capture partial responses on truncation
             },
             "generation": {
                 "enable_deduplication": True,
@@ -135,6 +136,11 @@ class Config:
         """Max number of concurrent requests; None/0 = unlimited."""
         value = self.get("llm.max_concurrent_requests", self.defaults["llm"]["max_concurrent_requests"])
         return None if value is None or value == 0 else value
+
+    @property
+    def use_streaming(self) -> bool:
+        """Return True when streaming mode is enabled for LLM responses."""
+        return self.get("llm.use_streaming", self.defaults["llm"]["use_streaming"])
 
     @property
     def enable_deduplication(self) -> bool:

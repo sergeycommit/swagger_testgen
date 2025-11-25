@@ -2,9 +2,103 @@
 Data models used across the test case generator.
 """
 
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from datetime import datetime
+from pydantic import BaseModel, Field
+from enum import Enum
 
+
+# =============================================================================
+# Pydantic models for OpenAI Structured Outputs
+# =============================================================================
+
+class TestType(str, Enum):
+    """Test case type enum."""
+    POSITIVE = "Positive"
+    NEGATIVE = "Negative"
+
+
+class Priority(str, Enum):
+    """Test case priority enum."""
+    HIGH = "High"
+    MEDIUM = "Medium"
+    LOW = "Low"
+
+
+class DesignTechnique(str, Enum):
+    """Test design technique enum."""
+    EP = "EP"
+    BVA = "BVA"
+    ERROR_GUESSING = "Error Guessing"
+    DECISION_TABLE = "Decision Table Testing"
+    PAIRWISE = "Pairwise Testing"
+    STATE_TRANSITION = "State Transition Testing"
+
+
+class TestStepSchema(BaseModel):
+    """Schema for a single test step."""
+    action: str = Field(
+        ...,
+        description="The action to perform in this test step (e.g., 'Send GET request to /api/users with valid token')"
+    )
+    expected_result: str = Field(
+        ...,
+        description="The expected outcome of this action (e.g., 'Response status 200, body contains user list')"
+    )
+
+
+class TestCaseSchema(BaseModel):
+    """Schema for a single test case - used for structured output validation."""
+    title: str = Field(
+        ...,
+        description="Short descriptive name for the test case (include method, path, type, technique)"
+    )
+    description: str = Field(
+        default="",
+        description="Detailed explanation of what this test verifies"
+    )
+    preconditions: str = Field(
+        default="",
+        description="Setup required before executing this test"
+    )
+    test_type: TestType = Field(
+        ...,
+        description="Whether this is a Positive or Negative test case"
+    )
+    design_technique: DesignTechnique = Field(
+        ...,
+        description="The test design technique used"
+    )
+    api_path: str = Field(
+        ...,
+        description="The API resource path being tested"
+    )
+    http_method: str = Field(
+        ...,
+        description="HTTP method: GET, POST, PUT, PATCH, or DELETE"
+    )
+    priority: Priority = Field(
+        default=Priority.MEDIUM,
+        description="Test priority: High (critical path), Medium (important), Low (edge cases)"
+    )
+    test_steps: List[TestStepSchema] = Field(
+        ...,
+        min_length=1,
+        description="List of test steps with actions and expected results"
+    )
+
+
+class TestCasesResponse(BaseModel):
+    """Root schema for structured output - contains list of test cases."""
+    test_cases: List[TestCaseSchema] = Field(
+        ...,
+        description="List of generated test cases"
+    )
+
+
+# =============================================================================
+# Runtime TestCase class (for internal use and export)
+# =============================================================================
 
 class TestCase:
     """Represents a single generated test case."""
@@ -13,13 +107,45 @@ class TestCase:
         self.title = data.get("title", "Untitled Test Case")
         self.description = data.get("description", "")
         self.preconditions = data.get("preconditions", "")
-        self.test_steps = data.get("test_steps", [])
-        self.test_type = data.get("test_type", "Unknown")
-        self.design_technique = data.get("design_technique", "Unknown")
+        self.test_steps = self._normalize_test_steps(data.get("test_steps", []))
+        self.test_type = self._normalize_enum(data.get("test_type", "Unknown"))
+        self.design_technique = self._normalize_enum(data.get("design_technique", "Unknown"))
         self.api_path = data.get("api_path", "")
-        self.http_method = data.get("http_method", "")
-        self.priority = data.get("priority", "Medium")
+        self.http_method = data.get("http_method", "").upper()
+        self.priority = self._normalize_enum(data.get("priority", "Medium"))
         self.created_date = datetime.now().isoformat()
+
+    @staticmethod
+    def _normalize_enum(value: Any) -> str:
+        """Convert enum to string if needed."""
+        if hasattr(value, 'value'):
+            return value.value
+        return str(value) if value else "Unknown"
+
+    @staticmethod
+    def _normalize_test_steps(steps: Any) -> List[Dict[str, str]]:
+        """Normalize test steps from various formats."""
+        if not steps:
+            return []
+        
+        normalized = []
+        for step in steps:
+            if isinstance(step, dict):
+                normalized.append({
+                    "action": step.get("action", ""),
+                    "expected_result": step.get("expected_result", "")
+                })
+            elif hasattr(step, 'action'):  # Pydantic model
+                normalized.append({
+                    "action": step.action,
+                    "expected_result": step.expected_result
+                })
+        return normalized
+
+    @classmethod
+    def from_schema(cls, schema: TestCaseSchema) -> 'TestCase':
+        """Create TestCase from Pydantic schema."""
+        return cls(schema.model_dump())
 
     def to_csv_rows(self) -> List[Dict[str, str]]:
         """Convert the test case into CSV rows compatible with TestIT/TestOps."""
