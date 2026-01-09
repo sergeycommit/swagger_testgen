@@ -17,20 +17,6 @@ from .utils import validate_test_case
 
 logger = logging.getLogger(__name__)
 
-# Models known to support structured outputs (response_format with json_schema)
-STRUCTURED_OUTPUT_MODELS = {
-    "gpt-4o",
-    "gpt-4o-2024-08-06",
-    "gpt-4o-2024-11-20",
-    "gpt-4o-mini",
-    "gpt-4o-mini-2024-07-18",
-    "openai/gpt-4o",
-    "openai/gpt-4o-mini",
-    "openai/gpt-4o-2024-08-06",
-    "openai/gpt-4o-2024-11-20",
-    "openai/gpt-4o-mini-2024-07-18",
-}
-
 
 class LLMTestCaseGenerator:
     """Generate test cases with an LLM (OpenRouter or local) using parallel execution."""
@@ -62,9 +48,8 @@ class LLMTestCaseGenerator:
 
     def _supports_structured_output(self, model: str) -> bool:
         """Check if the model supports structured outputs."""
-        # Check exact match or prefix match
         model_lower = model.lower()
-        for supported in STRUCTURED_OUTPUT_MODELS:
+        for supported in self.config.structured_output_models:
             if model_lower == supported.lower() or model_lower.startswith(supported.lower()):
                 return True
         return False
@@ -322,7 +307,8 @@ Generate 15-40 focused test cases depending on operation complexity."""
                 ],
                 response_format=TestCasesResponse,
                 temperature=self.config.llm_temperature,
-                max_tokens=self.config.llm_max_tokens
+                max_tokens=self.config.llm_max_tokens,
+                timeout=self.config.request_timeout
             )
 
             parsed = response.choices[0].message.parsed
@@ -376,24 +362,32 @@ Generate 15-40 focused test cases depending on operation complexity."""
     async def _generate_with_streaming(
         self,
         system_prompt: str,
-        user_prompt: str
+        user_prompt: str,
+        use_json_format: bool = True
     ) -> List[Dict[str, Any]]:
         """Generate test cases using streaming to capture partial responses."""
         collected_content = ""
         finish_reason = None
         
         try:
-            stream = await self.client.chat.completions.create(
-                model=self.config.llm_model,
-                messages=[
+            # Build request params
+            request_params = {
+                "model": self.config.llm_model,
+                "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                response_format={"type": "json_object"},
-                temperature=self.config.llm_temperature,
-                max_tokens=self.config.llm_max_tokens,
-                stream=True
-            )
+                "temperature": self.config.llm_temperature,
+                "max_tokens": self.config.llm_max_tokens,
+                "stream": True,
+                "timeout": self.config.request_timeout
+            }
+            
+            # Only add response_format if supported (some local LLMs don't support it)
+            if use_json_format:
+                request_params["response_format"] = {"type": "json_object"}
+            
+            stream = await self.client.chat.completions.create(**request_params)
 
             async for chunk in stream:
                 if chunk.choices and len(chunk.choices) > 0:
@@ -420,12 +414,20 @@ Generate 15-40 focused test cases depending on operation complexity."""
                 logger.debug(f"Response finished with reason: {finish_reason}")
 
         except Exception as e:
+            error_str = str(e).lower()
+            
+            # Handle LM Studio and other local LLMs that don't support response_format
+            if "response_format" in error_str or "json_object" in error_str or "json_schema" in error_str:
+                if use_json_format:
+                    logger.warning("Local LLM doesn't support response_format, retrying without it")
+                    return await self._generate_with_streaming(system_prompt, user_prompt, use_json_format=False)
+            
             logger.error(f"Streaming error: {e}")
             # If streaming fails, fall back to non-streaming
             if collected_content:
                 logger.info(f"Attempting to parse partial streamed content ({len(collected_content)} chars)")
             else:
-                return await self._generate_without_streaming(system_prompt, user_prompt)
+                return await self._generate_without_streaming(system_prompt, user_prompt, use_json_format=use_json_format)
 
         if not collected_content:
             logger.warning("No content received from streaming response")
@@ -436,22 +438,40 @@ Generate 15-40 focused test cases depending on operation complexity."""
     async def _generate_without_streaming(
         self,
         system_prompt: str,
-        user_prompt: str
+        user_prompt: str,
+        use_json_format: bool = True
     ) -> List[Dict[str, Any]]:
         """Fallback non-streaming generation."""
-        response = await self.client.chat.completions.create(
-            model=self.config.llm_model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ],
-            response_format={"type": "json_object"},
-            temperature=self.config.llm_temperature,
-            max_tokens=self.config.llm_max_tokens
-        )
-
-        json_string = response.choices[0].message.content
-        return self._parse_llm_response(json_string)
+        try:
+            # Build request params
+            request_params = {
+                "model": self.config.llm_model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "temperature": self.config.llm_temperature,
+                "max_tokens": self.config.llm_max_tokens,
+                "timeout": self.config.request_timeout
+            }
+            
+            # Only add response_format if supported
+            if use_json_format:
+                request_params["response_format"] = {"type": "json_object"}
+            
+            response = await self.client.chat.completions.create(**request_params)
+            json_string = response.choices[0].message.content
+            return self._parse_llm_response(json_string)
+            
+        except Exception as e:
+            error_str = str(e).lower()
+            
+            # Handle LM Studio and other local LLMs that don't support response_format
+            if "response_format" in error_str or "json_object" in error_str or "json_schema" in error_str:
+                if use_json_format:
+                    logger.warning("Local LLM doesn't support response_format, retrying without it")
+                    return await self._generate_without_streaming(system_prompt, user_prompt, use_json_format=False)
+            raise
 
     def _parse_llm_response(self, json_string: str) -> List[Dict[str, Any]]:
         """Parse the LLM response with multiple fallback strategies."""
@@ -488,6 +508,9 @@ Generate 15-40 focused test cases depending on operation complexity."""
             return partial_cases
 
         logger.error("All JSON parsing strategies failed")
+        # Log a preview of the raw response for debugging
+        preview = json_string[:500] if len(json_string) > 500 else json_string
+        logger.debug(f"Raw LLM response preview: {preview}")
         return []
 
     def _try_direct_parse(self, json_string: str) -> Optional[Any]:

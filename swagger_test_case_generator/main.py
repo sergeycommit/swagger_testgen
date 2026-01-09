@@ -43,7 +43,13 @@ async def main_async(args):
     setup_logging(args.log_file, args.log_level)
 
     # Load configuration
-    config = Config(args.config) if args.config else Config()
+    # Auto-discover config.yaml in current directory if --config not provided
+    config_path = args.config
+    if not config_path:
+        default_config = "config.yaml"
+        if os.path.exists(default_config):
+            config_path = default_config
+    config = Config(config_path) if config_path else Config()
     
     # Override config with CLI args
     if args.api_key:

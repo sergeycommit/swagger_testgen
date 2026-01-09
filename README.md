@@ -17,6 +17,8 @@ Automatic Swagger/OpenAPI test case generator powered by LLMs.
 - ✅ CSV and JSON export
 - ✅ Works with local LLMs (Ollama, LM Studio, vLLM, etc.)
 - ✅ Fully configurable via YAML
+- ✅ **Auto-discovers `config.yaml`** in current directory
+- ✅ Configurable request timeout
 
 ## 📦 Installation
 
@@ -30,6 +32,7 @@ pip install -r requirements
 - `PyYAML>=6.0.3` — Config parsing
 - `httpx>=0.24.0` — HTTP client
 - `python-dotenv>=0.9.9` — Environment variables
+- `pytest>=8.0.0` — Testing (dev)
 
 ## ⚙️ Configuration
 
@@ -39,9 +42,9 @@ pip install -r requirements
 export OPENROUTER_API_KEY="your-key-here"
 ```
 
-### 2. Optional config file
+### 2. Config file (auto-discovered)
 
-Create `config.yaml` based on the provided sample:
+Create `config.yaml` in your project directory — it will be **auto-discovered** without needing `--config`:
 
 ```yaml
 llm:
@@ -51,6 +54,7 @@ llm:
   max_tokens: 16000  # gpt-4o-mini supports up to 16k output tokens
   max_concurrent_requests: null  # null = unlimited
   use_streaming: true  # capture partial responses on truncation
+  request_timeout: 60  # timeout in seconds for LLM requests
 
 generation:
   enable_deduplication: true
@@ -79,7 +83,11 @@ python -m swagger_test_case_generator.main \
 ### Using a config file
 
 ```bash
+# Explicit config path
 python -m swagger_test_case_generator.main swagger.json output.csv --config config.yaml
+
+# Or just place config.yaml in current directory - it will be auto-discovered!
+python -m swagger_test_case_generator.main swagger.json output.csv
 ```
 
 ### Local LLM (Ollama, LM Studio, etc.)
@@ -218,6 +226,16 @@ swagger_test_case_generator/
 ├── exporter.py          # CSV/JSON exporters
 ├── models.py            # Pydantic data models & schemas
 └── utils.py             # Helpers
+
+tests/
+└── test_generator.py    # Unit tests (13 tests)
+```
+
+## 🧪 Running tests
+
+```bash
+pip install pytest
+python -m pytest tests/ -v
 ```
 
 ## 🎯 Test design techniques

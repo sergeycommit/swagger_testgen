@@ -36,7 +36,20 @@ class Config:
                 "retry_attempts": 3,
                 "retry_delay": 2,
                 "max_concurrent_requests": None,  # None or 0 means "no limit" for async fan-out
-                "use_streaming": True  # Use streaming to capture partial responses on truncation
+                "use_streaming": True,  # Use streaming to capture partial responses on truncation
+                "request_timeout": 60,  # Timeout in seconds for LLM API requests
+                "structured_output_models": [  # Models that support OpenAI structured outputs
+                    "gpt-4o",
+                    "gpt-4o-2024-08-06",
+                    "gpt-4o-2024-11-20",
+                    "gpt-4o-mini",
+                    "gpt-4o-mini-2024-07-18",
+                    "openai/gpt-4o",
+                    "openai/gpt-4o-mini",
+                    "openai/gpt-4o-2024-08-06",
+                    "openai/gpt-4o-2024-11-20",
+                    "openai/gpt-4o-mini-2024-07-18"
+                ]
             },
             "generation": {
                 "enable_deduplication": True,
@@ -141,6 +154,16 @@ class Config:
     def use_streaming(self) -> bool:
         """Return True when streaming mode is enabled for LLM responses."""
         return self.get("llm.use_streaming", self.defaults["llm"]["use_streaming"])
+
+    @property
+    def request_timeout(self) -> int:
+        """Timeout in seconds for LLM API requests."""
+        return self.get("llm.request_timeout", self.defaults["llm"]["request_timeout"])
+
+    @property
+    def structured_output_models(self) -> list:
+        """List of models that support OpenAI structured outputs."""
+        return self.get("llm.structured_output_models", self.defaults["llm"]["structured_output_models"])
 
     @property
     def enable_deduplication(self) -> bool:
